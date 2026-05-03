@@ -10,7 +10,7 @@
   - `tmp.dir` は `excel002.properties` の `tmp.dir`（未設定時はプロジェクトの慣例どおり `tmp` など）。
 - **ファイル名**: **`{sheet_id}.{aspect}.tsv`**
   - **`sheet_id`**: ブック内のシート ID（`xl/workbook.xml` の `<sheet sheetId="…">`。既に `sheets.json` の各シートの `sheet_id` と同一）。
-  - **`aspect`**: セルごとの観点（後述）。例: `value`, `format`, `formatted_value`, `type`, `formula`, `merge`, `style`。
+  - **`aspect`**: セルごとの観点（後述）。例: `value`, `string`, `format`, `formatted_value`, `type`, `formula`, `merge`, `style`。
 - **拡張**: 必要になったら `aspect` を増やす（例: `comment`, `hyperlink` など）。このドキュメントに追記する。
 
 例:
@@ -21,6 +21,7 @@
 
 ブック単位（シートに依存しない）のファイル:
 
+- **`strings.ndjson`** … 共有文字列テーブル（NDJSON）。各 `{sheet_id}.string.tsv` は **`strings.ndjson`** の **`id`**（`sharedStrings.xml` の **`si` の出現順＝0 始まりインデックス**）を参照する。
 - **`styles.ndjson`** … スタイル定義の辞書（NDJSON）。各 `{sheet_id}.style.tsv` はここで定義された **`id` を参照**する。
 
 ## グリッド形状（行・列）
@@ -51,7 +52,7 @@
 - **エンコード対象**: UTF-8 バイト列を Base64（標準の Base64 アルファベット、パディング `=` あり。URL-safe は使わない既定）。
 - **空セル**: ファイル上は **空フィールド**とし、Base64 文字列は書かない（「空文字をエンコードした結果」を書かない）。
 
-それ以外の aspect（`format`, `type`, `formula`, `merge`, `style` など）については、**別途この表に追記するまでプレーンテキスト**を既定とする（必要なら将来「この aspect も Base64」と追記する）。
+それ以外の aspect（`string`, `format`, `type`, `formula`, `merge`, `style` など）については、**別途この表に追記するまでプレーンテキスト**を既定とする（必要なら将来「この aspect も Base64」と追記する）。
 
 ---
 
@@ -62,6 +63,7 @@
 | aspect             | セルあたりの内容のイメージ |
 |--------------------|----------------------------|
 | `value`            | 内部値・素の値のテキスト（Base64）。共有文字列インデックスではなく解決後の文字列、数値はその文字列表現など、実装で定義。 |
+| `string`           | **共有文字列 ID**（プレーンテキスト）：`<c t="s">` の `<v>` に対応する **`strings.ndjson` の `id`**（10 進文字列）。共有文字列でないセルは空フィールド。 |
 | `formatted_value` | 表示用文字列（Base64）。 |
 | `format`           | 数値書式コードやスタイル由来の書式キー等（プレーンテキスト想定。詳細は実装時に固定）。 |
 | `type`             | セルの種別（例: `number`, `string`, `boolean`, `error`, `blank` など。列挙は実装時に確定）。 |
@@ -76,6 +78,12 @@
 - **結合に飲み込まれたセル（本体ではない側）** には **`-1,-1`** を入れる。
 - **`0,0` と `-1,-1` 以外のパターン**も確認できれば、結合エンティティを復元しやすいように活用する。
 
+### 共有文字列辞書 **`strings.ndjson`**（NDJSON）
+
+- **配置**: `{tmp.dir}/{md5}/data/strings.ndjson`
+- **形式**: **1 行に JSON オブジェクトがちょうど 1 個**。`sharedStrings.xml` の **`si` のドキュメント順**が **`id` の `"0"`, `"1"`, …** に対応する。
+- **実装（現状）のキー**: **`schema_version`**、**`id`**、**`value`**（本文）。`sharedStrings.xml` が無いブックは **空ファイル**。
+
 ### スタイル辞書 **`styles.ndjson`**（NDJSON）
 
 セル単位の `{sheet_id}.style.tsv` には **参照 ID のみ** を並べ、スタイル定義の本体は **`xl/styles.xml` をまとめた別ファイル**に載せる。フォーマットは **NDJSON（JSON Lines）** とする。
@@ -84,7 +92,8 @@
 - **形式**: **1 行に JSON オブジェクトがちょうど 1 個**。ファイル全体を **配列 `[...]` で囲まない**。
 - **エンコーディング**: UTF-8、改行は **`LF（`\n`）`** でレコードを区切る。
 - **各行オブジェクト**には最低でも **`id`**（または `cell_xf` など、実装で固定したキー）を含み、`{sheet_id}.style.tsv` のセルに書いた **スタイル ID 文字列と同一の値**で参照できること。
-- **その他のキー**: `fonts` / `fills` / `borders` / `numFmt` / `xf` 属性など、`xl/styles.xml` から解決した結果をフラットまたはネストして載せる。完全な JSON スキーマは実装時にこの文書へ追記する。
+- **実装（現状）のキー**: **`schema_version`**（数値 `1`）、**`id`**（`cellXfs` インデックスの文字列）、**`numFmtId`**、**`formatCode`**（組み込み・カスタム解決後）、**`restore_xml`**（単体でパース可能な `<xf xmlns="…">…</xf>` 断片）。
+- **その他のキー**: 将来 `fonts` / `fills` / `borders` などを載せる余地あり。完全な JSON スキーマは実装とともにこの文書へ追記する。
 - **行の並び**:既定では **`cellXfs` のインデックス昇順**（`id` がインデックスの文字列表現など）とするのがわかりやすい。別順にする場合は実装とともに明記する。
 
 ---
@@ -92,6 +101,7 @@
 ## `sheets.json` との関係
 
 - `sheets.json` はシート一覧・`sheet_id`・ワークシート XML の相対パスなどのメタデータを提供する。
+- **`strings.ndjson`** は **`sheets.json` と同じ `data/`** に置く共有文字列辞書であり、`string.tsv` の **`id` と同一の値**で参照できること。
 - **`styles.ndjson`** は **`sheets.json` と同じ `data/` に置くブック単位のファイル**であり、全シート共通のスタイル定義を NDJSON で載せる。
 - TSV は **`sheet_id` 単位**で同一 `data` ディレクトリに並ぶため、JSON の `sheet_id` とファイル名の `{sheet_id}` が対応する。
 - ワークシート XML のパスは JSON の `worksheet_xml`（excel ルート相対）で引ける。

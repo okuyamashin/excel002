@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Base64;
+import java.util.List;
 import java.util.zip.ZipFile;
 
 import org.junit.jupiter.api.Test;
@@ -33,6 +34,17 @@ class BookTest {
 
         Path dataDir = mdWorkDir.resolve("data");
         assertTrue(Files.isRegularFile(dataDir.resolve("sheets.json")), "data/sheets.json が出力されていること");
+        Path stringsNdjson = dataDir.resolve("strings.ndjson");
+        assertTrue(Files.isRegularFile(stringsNdjson), "data/strings.ndjson が出力されていること");
+        List<String> stringRecords =
+                Files.readAllLines(stringsNdjson, StandardCharsets.UTF_8).stream()
+                        .filter(line -> !line.isBlank())
+                        .toList();
+        assertEquals(10, stringRecords.size(), "サンプル共有文字列は 10 件（uniqueCount）");
+        assertTrue(stringRecords.get(0).contains("\"schema_version\":1"), "strings NDJSON に schema_version");
+        assertTrue(stringRecords.get(0).contains("\"id\":\"0\""), "先頭 id が 0");
+        assertTrue(stringRecords.get(0).contains("sampledata"), "id 0 の value に sampledata");
+
         Path valueTsv = dataDir.resolve("1.value.tsv");
         assertTrue(Files.isRegularFile(valueTsv), "data/1.value.tsv が出力されていること");
         String firstRow = Files.readString(valueTsv, StandardCharsets.UTF_8).split("\n", 2)[0];
@@ -46,6 +58,18 @@ class BookTest {
         assertTrue(Files.isRegularFile(typeTsv), "data/1.type.tsv が出力されていること");
         String typeFirstRow = Files.readString(typeTsv, StandardCharsets.UTF_8).split("\n", 2)[0];
         assertEquals("string", typeFirstRow.split("\t", -1)[0], "A1 の型が string であること");
+
+        Path stringTsv = dataDir.resolve("1.string.tsv");
+        assertTrue(Files.isRegularFile(stringTsv), "data/1.string.tsv が出力されていること");
+        String[] stringRow1 = Files.readString(stringTsv, StandardCharsets.UTF_8).split("\n")[0].split("\t", -1);
+        assertEquals("0", stringRow1[0], "A1 は共有文字列 id 0");
+        assertEquals("", stringRow1[1], "B1 は共有文字列参照なしで空フィールド");
+        Path stringTsv2 = dataDir.resolve("2.string.tsv");
+        assertTrue(Files.isRegularFile(stringTsv2), "data/2.string.tsv が出力されていること");
+        assertEquals(
+                "1",
+                Files.readString(stringTsv2, StandardCharsets.UTF_8).split("\n")[0].split("\t", -1)[0],
+                "Sheet2 A1 は共有文字列 id 1（テストデータ依存）");
 
         Path formulaTsv = dataDir.resolve("1.formula.tsv");
         assertTrue(Files.isRegularFile(formulaTsv), "data/1.formula.tsv が出力されていること");
@@ -92,15 +116,19 @@ class BookTest {
                 styleLines[4].split("\t", -1)[0],
                 "日付行の cellXf インデックス 1");
 
-        Path stylesJson = dataDir.resolve("styles.json");
-        assertTrue(Files.isRegularFile(stylesJson), "data/styles.json が出力されていること");
-        String stylesBody = Files.readString(stylesJson, StandardCharsets.UTF_8);
-        assertTrue(stylesBody.contains("\"schema_version\":1"), "schema_version があること");
-        assertTrue(stylesBody.contains("\"styles\""), "styles オブジェクトがあること");
-        assertTrue(stylesBody.contains("\"4\":{"), "style ID 4 のエントリがあること");
-        assertTrue(stylesBody.contains("\"restore_xml\""), "restore_xml フィールドがあること");
+        Path stylesNdjson = dataDir.resolve("styles.ndjson");
+        assertTrue(Files.isRegularFile(stylesNdjson), "data/styles.ndjson が出力されていること");
+        List<String> xfsNdLines =
+                Files.readAllLines(stylesNdjson, StandardCharsets.UTF_8).stream()
+                        .filter(line -> !line.isBlank())
+                        .toList();
+        assertEquals(5, xfsNdLines.size(), "サンプルブックの cellXfs は 5 件");
+        assertTrue(xfsNdLines.get(0).contains("\"schema_version\":1"), "schema_version があること");
+        assertTrue(xfsNdLines.get(0).contains("\"id\":\"0\""), "先頭行が id 0");
+        assertTrue(xfsNdLines.get(4).contains("\"id\":\"4\""), "id 4 のレコードがあること");
+        assertTrue(xfsNdLines.get(0).contains("\"restore_xml\""), "restore_xml キーがあること");
         assertTrue(
-                stylesBody.contains("spreadsheetml/2006/main"),
+                String.join("\n", xfsNdLines).contains("spreadsheetml/2006/main"),
                 "restore_xml にスタイルシートの名前空間 URI が含まれること");
 
         Path formattedTsv = dataDir.resolve("1.formatted_value.tsv");

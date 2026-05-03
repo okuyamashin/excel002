@@ -20,7 +20,7 @@ import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamReader;
 
 /**
- * {@code data/{sheet_id}.value.tsv} / {@code .type.tsv} / {@code .formula.tsv} /
+ * {@code data/{sheet_id}.value.tsv} / {@code .type.tsv} / {@code .string.tsv} / {@code .formula.tsv} /
  * {@code .format.tsv} / {@code .merge.tsv} / {@code .style.tsv} / {@code .formatted_value.tsv} を書き出す（{@code docs/data-tsv-export.md}）。
  */
 final class SheetValueTsvExporter {
@@ -35,7 +35,12 @@ final class SheetValueTsvExporter {
 
     private SheetValueTsvExporter() {}
 
-    private record CellRead(String valueText, String typeLabel, String formulaText, int styleIndex) {}
+    private record CellRead(
+            String valueText,
+            String typeLabel,
+            String formulaText,
+            int styleIndex,
+            Integer sharedStringIndex) {}
 
     /** {@code dataDir} に各シートの {@code {sheet_id}.value.tsv} を UTF-8・LF で出力する。 */
     static void writeValueTsvFiles(Path excelRoot, Path dataDir) throws IOException {
@@ -90,6 +95,36 @@ final class SheetValueTsvExporter {
             CellRead[][] cells = loadCellReads(worksheetFile, sharedStrings, dim.rows(), dim.cols());
             Path out = dataDir.resolve(sh.sheetId() + ".type.tsv");
             writeGridPlainTsv(out, toTypeGrid(cells));
+        }
+    }
+
+    /**
+     * {@code dataDir} に各シートの {@code {sheet_id}.string.tsv} を出力する（{@code t="s"} のセルのみ
+     * {@code strings.ndjson} の {@code id} を十進文字列で。それ以外・{@code <c>} 無しは空フィールド）。
+     */
+    static void writeStringTsvFiles(Path excelRoot, Path dataDir) throws IOException {
+        Path xl = excelRoot.resolve("xl");
+        if (!Files.isDirectory(xl)) {
+            throw new IOException("xl ディレクトリがありません: " + excelRoot);
+        }
+
+        Path excelNorm = excelRoot.toAbsolutePath().normalize();
+        List<String> sharedStrings = readSharedStrings(xl.resolve("sharedStrings.xml"));
+        Map<String, String> worksheetTargets = readWorksheetTargets(xl.resolve("_rels/workbook.xml.rels"));
+        List<ValueSheetRef> sheets =
+                readWorksheetSheetRefs(xl.resolve("workbook.xml"), worksheetTargets, xl, excelNorm);
+
+        Files.createDirectories(dataDir);
+
+        for (ValueSheetRef sh : sheets) {
+            Path worksheetFile = excelNorm.resolve(sh.worksheetRelativePath()).normalize();
+            if (!worksheetFile.startsWith(excelNorm)) {
+                throw new IOException("ワークシートパスが excel ルートの外です: " + worksheetFile);
+            }
+            IntBounds dim = worksheetUsedBounds(worksheetFile);
+            CellRead[][] cells = loadCellReads(worksheetFile, sharedStrings, dim.rows(), dim.cols());
+            Path out = dataDir.resolve(sh.sheetId() + ".string.tsv");
+            writeGridPlainTsv(out, toSharedStringIdGrid(cells));
         }
     }
 
@@ -332,7 +367,7 @@ final class SheetValueTsvExporter {
         return map;
     }
 
-    private static List<String> readSharedStrings(Path sharedXml) throws IOException {
+    static List<String> readSharedStrings(Path sharedXml) throws IOException {
         if (!Files.isRegularFile(sharedXml)) {
             return List.of();
         }
@@ -604,6 +639,24 @@ final class SheetValueTsvExporter {
         return g;
     }
 
+    private static String[][] toSharedStringIdGrid(CellRead[][] cells) {
+        String[][] g = new String[cells.length][];
+        for (int r = 0; r < cells.length; r++) {
+            g[r] = new String[cells[r].length];
+            for (int c = 0; c < cells[r].length; c++) {
+                CellRead cr = cells[r][c];
+                if (cr == null) {
+                    continue;
+                }
+                Integer idx = cr.sharedStringIndex();
+                if (idx != null) {
+                    g[r][c] = Integer.toString(idx);
+                }
+            }
+        }
+        return g;
+    }
+
     private static String[][] toFormattedValueGrid(CellRead[][] cells, OoxmlStylesResolver styles) {
         String[][] g = new String[cells.length][];
         for (int r = 0; r < cells.length; r++) {
@@ -698,7 +751,28 @@ final class SheetValueTsvExporter {
 
         String valueResolved = resolveStoredValue(inlineText, vText, cellTypeAttr, sharedStrings);
         String typeLabel = classifyCellType(cellTypeAttr, hasFormula, vText, valueResolved);
-        return new CellRead(valueResolved, typeLabel, formulaText, styleIndex);
+        Integer ssIdx = parseSharedStringIndex(cellTypeAttr, vText);
+        return new CellRead(valueResolved, typeLabel, formulaText, styleIndex, ssIdx);
+    }
+
+    /** {@code t="s"} かつ {@code <v>} が非負整数のときその値、それ以外 {@code null}。 */
+    private static Integer parseSharedStringIndex(String cellTypeAttr, String vText) {
+        if (!"s".equals(cellTypeAttr) || vText == null) {
+            return null;
+        }
+        String v = vText.trim();
+        if (v.isEmpty()) {
+            return null;
+        }
+        try {
+            int idx = Integer.parseInt(v);
+            if (idx < 0) {
+                return null;
+            }
+            return idx;
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     private static String resolveStoredValue(

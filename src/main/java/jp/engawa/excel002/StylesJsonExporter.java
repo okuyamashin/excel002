@@ -15,8 +15,8 @@ import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamReader;
 
 /**
- * {@code xl/styles.xml} を読み、{@code data/styles.json} に {@code cellXfs} インデックス（{@code .style.tsv} の ID）ごとの
- * 復元用 {@code xf} XML 断片と {@code numFmtId} / {@code formatCode} を書き出す。
+ * {@code xl/styles.xml} を読み、{@code data/styles.ndjson} に {@code cellXfs} インデックス（{@code .style.tsv} の ID）ごとの
+ * 復元用 {@code xf} XML 断片と {@code numFmtId} / {@code formatCode} を NDJSON（JSON Lines）で書き出す。
  */
 final class StylesJsonExporter {
     private static final String NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
@@ -24,37 +24,35 @@ final class StylesJsonExporter {
     private StylesJsonExporter() {}
 
     /**
-     * {@code stylesJsonFile} に {@code schema_version} と {@code styles} オブジェクトを書く。
-     * {@code xl/styles.xml} が無い場合は {@code styles} は空オブジェクト。
+     * {@code stylesNdjsonFile} に 1 行 1 オブジェクトの NDJSON を書く（{@code cellXfs} の並び＝{@code id} 昇順）。
+     * 各行は {@code schema_version}, {@code id}, {@code numFmtId}, {@code formatCode}, {@code restore_xml} を含む。
+     * {@code xl/styles.xml} が無い、または {@code cellXfs} が空のときは **空ファイル**（0 バイト）とする。
      */
-    static void write(Path excelRoot, Path stylesJsonFile) throws IOException {
+    static void write(Path excelRoot, Path stylesNdjsonFile) throws IOException {
         Path xl = excelRoot.resolve("xl");
         Path stylesXml = xl.resolve("styles.xml");
-        Path parent = stylesJsonFile.toAbsolutePath().normalize().getParent();
+        Path parent = stylesNdjsonFile.toAbsolutePath().normalize().getParent();
         if (parent != null) {
             Files.createDirectories(parent);
         }
 
         if (!Files.isRegularFile(stylesXml)) {
-            writeMinimal(stylesJsonFile);
+            Files.writeString(stylesNdjsonFile, "", StandardCharsets.UTF_8);
             return;
         }
 
         OoxmlStylesResolver resolver = OoxmlStylesResolver.load(stylesXml);
         List<XfRecord> xfs = readCellXfFragments(stylesXml);
 
-        try (BufferedWriter w = Files.newBufferedWriter(stylesJsonFile, StandardCharsets.UTF_8)) {
-            w.write("{\"schema_version\":1,\"styles\":{");
+        try (BufferedWriter w = Files.newBufferedWriter(stylesNdjsonFile, StandardCharsets.UTF_8)) {
             for (int i = 0; i < xfs.size(); i++) {
-                if (i > 0) {
-                    w.write(',');
-                }
                 String id = Integer.toString(i);
                 XfRecord xf = xfs.get(i);
                 String formatCode = resolver.formatCodeForCellStyle(i);
-                w.write('\n');
-                writeJsonString(w, id);
-                w.write(":{\"id\":");
+                if (i > 0) {
+                    w.write('\n');
+                }
+                w.write("{\"schema_version\":1,\"id\":");
                 writeJsonString(w, id);
                 w.write(",\"numFmtId\":");
                 w.write(Integer.toString(xf.numFmtId()));
@@ -64,12 +62,10 @@ final class StylesJsonExporter {
                 writeJsonString(w, xf.restoreXml());
                 w.write('}');
             }
-            w.write("\n}}\n");
+            if (!xfs.isEmpty()) {
+                w.write('\n');
+            }
         }
-    }
-
-    private static void writeMinimal(Path stylesJsonFile) throws IOException {
-        Files.writeString(stylesJsonFile, "{\"schema_version\":1,\"styles\":{}}\n", StandardCharsets.UTF_8);
     }
 
     private record XfRecord(int numFmtId, String restoreXml) {}

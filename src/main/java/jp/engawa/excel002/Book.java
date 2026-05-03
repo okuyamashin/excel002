@@ -30,8 +30,10 @@ public class Book {
         book.endTime = 0;
         book.unzip();
         book.sheetsjson();
+        book.stringsndjson();
         book.sheetvalues();
         book.sheettypes();
+        book.sheetstrings();
         book.sheetformulas();
         book.sheetformats();
         book.sheetmerges();
@@ -95,6 +97,33 @@ public class Book {
     }
 
     /**
+     * {@code tmp.dir/md5/data/strings.ndjson} に {@code xl/sharedStrings.xml} の各 {@code si} を、{@code id}（0 始まりインデックス）と
+     * {@code value} の NDJSON で書き出す。
+     *
+     * @see StringsNdjsonExporter#write
+     */
+    public Book stringsndjson() throws IOException {
+        this.status = "strings.ndjson";
+        if (tmpdir == null || !tmpdir.isDirectory()) {
+            throw new IOException("展開ディレクトリがありません（先に load を実行してください）");
+        }
+        if (md5 == null || md5.isBlank()) {
+            throw new IOException("MD5 が未定義です（先に load を実行してください）");
+        }
+
+        Path excelRoot = tmpdir.toPath().toAbsolutePath().normalize();
+        Path mdRoot = excelRoot.getParent();
+        if (mdRoot == null) {
+            throw new IOException("作業ディレクトリの親を解決できません");
+        }
+        Path dataDir = mdRoot.resolve("data");
+        StringsNdjsonExporter.write(excelRoot, dataDir.resolve("strings.ndjson"));
+
+        this.endTime = System.currentTimeMillis();
+        return this;
+    }
+
+    /**
      * {@code tmp.dir/md5/data} に各シートの {@code {sheet_id}.value.tsv} を書き出す（セル値は UTF-8 を Base64。
      * 空セルは空フィールド）。グリッドは {@code sheets.json} と同じ行・列サイズに合わせる。
      *
@@ -141,6 +170,33 @@ public class Book {
         }
         Path dataDir = mdRoot.resolve("data");
         SheetValueTsvExporter.writeTypeTsvFiles(excelRoot, dataDir);
+
+        this.endTime = System.currentTimeMillis();
+        return this;
+    }
+
+    /**
+     * {@code tmp.dir/md5/data} に各シートの {@code {sheet_id}.string.tsv} を書き出す（{@code t="s"} のセルのみ {@code strings.ndjson}
+     * の {@code id} をプレーンテキスト）。
+     *
+     * @see SheetValueTsvExporter#writeStringTsvFiles
+     */
+    public Book sheetstrings() throws IOException {
+        this.status = "sheet.string.tsv";
+        if (tmpdir == null || !tmpdir.isDirectory()) {
+            throw new IOException("展開ディレクトリがありません（先に load を実行してください）");
+        }
+        if (md5 == null || md5.isBlank()) {
+            throw new IOException("MD5 が未定義です（先に load を実行してください）");
+        }
+
+        Path excelRoot = tmpdir.toPath().toAbsolutePath().normalize();
+        Path mdRoot = excelRoot.getParent();
+        if (mdRoot == null) {
+            throw new IOException("作業ディレクトリの親を解決できません");
+        }
+        Path dataDir = mdRoot.resolve("data");
+        SheetValueTsvExporter.writeStringTsvFiles(excelRoot, dataDir);
 
         this.endTime = System.currentTimeMillis();
         return this;
@@ -253,13 +309,13 @@ public class Book {
     }
 
     /**
-     * {@code tmp.dir/md5/data/styles.json} に {@code xl/styles.xml} の {@code cellXfs} を、{@code .style.tsv} の ID ごとの
-     * {@code restore_xml}（{@code xf} 断片）と {@code numFmtId} / {@code formatCode} として書き出す。
+     * {@code tmp.dir/md5/data/styles.ndjson} に {@code xl/styles.xml} の {@code cellXfs} を、{@code .style.tsv} の ID ごとの
+     * レコード（NDJSON、1 行 1 オブジェクト）として書き出す。
      *
      * @see StylesJsonExporter#write
      */
     public Book stylesjson() throws IOException {
-        this.status = "styles.json";
+        this.status = "styles.ndjson";
         if (tmpdir == null || !tmpdir.isDirectory()) {
             throw new IOException("展開ディレクトリがありません（先に load を実行してください）");
         }
@@ -273,7 +329,7 @@ public class Book {
             throw new IOException("作業ディレクトリの親を解決できません");
         }
         Path dataDir = mdRoot.resolve("data");
-        StylesJsonExporter.write(excelRoot, dataDir.resolve("styles.json"));
+        StylesJsonExporter.write(excelRoot, dataDir.resolve("styles.ndjson"));
 
         this.endTime = System.currentTimeMillis();
         return this;
