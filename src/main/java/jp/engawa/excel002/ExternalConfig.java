@@ -1,4 +1,4 @@
-package com.example.excel002;
+package jp.engawa.excel002;
 
 import java.io.IOException;
 import java.io.Reader;
