@@ -29,6 +29,15 @@ public class Book {
         book.beginTime = System.currentTimeMillis();
         book.endTime = 0;
         book.unzip();
+        book.sheetsjson();
+        book.sheetvalues();
+        book.sheettypes();
+        book.sheetformulas();
+        book.sheetformats();
+        book.sheetmerges();
+        book.sheetstyles();
+        book.stylesjson();
+        book.sheetformattedvalues();
         return book;
     }
 
@@ -51,6 +60,248 @@ public class Book {
 
     public long getEndTime() {
         return this.endTime;
+    }
+
+    /**
+     * {@code tmp.dir/md5/data} を作成し、その配下に {@code sheets.json} を書き出す。
+     * JSON の構造はコード内コメント（実装時仕様）どおり:
+     * {@code file_name}, {@code last_modified}（エポックミリ秒）, {@code file_md5},
+     * {@code sheets_size}, {@code sheets[]}（各要素に {@code sheet_name}, {@code sheet_index},
+     * {@code max_row_num}, {@code max_column_num}, {@code sheet_id}, {@code relationship_id},
+     * {@code worksheet_xml} は {@code tmp.dir/md5/excel} からの相対パス（例: {@code xl/worksheets/sheet1.xml}）。JSON のキー名は {@code worksheet_xml} のまま。
+     */
+    public Book sheetsjson() throws IOException {
+        this.status = "sheets.json";
+        if (tmpdir == null || !tmpdir.isDirectory()) {
+            throw new IOException("展開ディレクトリがありません（先に load を実行してください）");
+        }
+        if (md5 == null || md5.isBlank()) {
+            throw new IOException("MD5 が未定義です（先に load を実行してください）");
+        }
+        if (excelfile == null || !excelfile.isFile()) {
+            throw new IOException("元の Excel ファイルがありません");
+        }
+
+        Path excelRoot = tmpdir.toPath().toAbsolutePath().normalize();
+        Path mdRoot = excelRoot.getParent();
+        if (mdRoot == null) {
+            throw new IOException("作業ディレクトリの親を解決できません");
+        }
+        Path jsonPath = mdRoot.resolve("data").resolve("sheets.json");
+        SheetsJsonExporter.write(excelRoot, jsonPath, excelfile, md5);
+
+        this.endTime = System.currentTimeMillis();
+        return this;
+    }
+
+    /**
+     * {@code tmp.dir/md5/data} に各シートの {@code {sheet_id}.value.tsv} を書き出す（セル値は UTF-8 を Base64。
+     * 空セルは空フィールド）。グリッドは {@code sheets.json} と同じ行・列サイズに合わせる。
+     *
+     * @see SheetValueTsvExporter
+     */
+    public Book sheetvalues() throws IOException {
+        this.status = "sheet.value.tsv";
+        if (tmpdir == null || !tmpdir.isDirectory()) {
+            throw new IOException("展開ディレクトリがありません（先に load を実行してください）");
+        }
+        if (md5 == null || md5.isBlank()) {
+            throw new IOException("MD5 が未定義です（先に load を実行してください）");
+        }
+
+        Path excelRoot = tmpdir.toPath().toAbsolutePath().normalize();
+        Path mdRoot = excelRoot.getParent();
+        if (mdRoot == null) {
+            throw new IOException("作業ディレクトリの親を解決できません");
+        }
+        Path dataDir = mdRoot.resolve("data");
+        SheetValueTsvExporter.writeValueTsvFiles(excelRoot, dataDir);
+
+        this.endTime = System.currentTimeMillis();
+        return this;
+    }
+
+    /**
+     * {@code tmp.dir/md5/data} に各シートの {@code {sheet_id}.type.tsv} を書き出す（セル型はプレーンテキスト:
+     * {@code string}, {@code number}, {@code boolean}, {@code error}, {@code date}。空セルは空フィールド）。
+     */
+    public Book sheettypes() throws IOException {
+        this.status = "sheet.type.tsv";
+        if (tmpdir == null || !tmpdir.isDirectory()) {
+            throw new IOException("展開ディレクトリがありません（先に load を実行してください）");
+        }
+        if (md5 == null || md5.isBlank()) {
+            throw new IOException("MD5 が未定義です（先に load を実行してください）");
+        }
+
+        Path excelRoot = tmpdir.toPath().toAbsolutePath().normalize();
+        Path mdRoot = excelRoot.getParent();
+        if (mdRoot == null) {
+            throw new IOException("作業ディレクトリの親を解決できません");
+        }
+        Path dataDir = mdRoot.resolve("data");
+        SheetValueTsvExporter.writeTypeTsvFiles(excelRoot, dataDir);
+
+        this.endTime = System.currentTimeMillis();
+        return this;
+    }
+
+    /**
+     * {@code tmp.dir/md5/data} に各シートの {@code {sheet_id}.formula.tsv} を書き出す（{@code <f>} のプレーンテキスト。
+     * 数式が無いセルは空フィールド）。
+     */
+    public Book sheetformulas() throws IOException {
+        this.status = "sheet.formula.tsv";
+        if (tmpdir == null || !tmpdir.isDirectory()) {
+            throw new IOException("展開ディレクトリがありません（先に load を実行してください）");
+        }
+        if (md5 == null || md5.isBlank()) {
+            throw new IOException("MD5 が未定義です（先に load を実行してください）");
+        }
+
+        Path excelRoot = tmpdir.toPath().toAbsolutePath().normalize();
+        Path mdRoot = excelRoot.getParent();
+        if (mdRoot == null) {
+            throw new IOException("作業ディレクトリの親を解決できません");
+        }
+        Path dataDir = mdRoot.resolve("data");
+        SheetValueTsvExporter.writeFormulaTsvFiles(excelRoot, dataDir);
+
+        this.endTime = System.currentTimeMillis();
+        return this;
+    }
+
+    /**
+     * {@code tmp.dir/md5/data} に各シートの {@code {sheet_id}.format.tsv} を書き出す（{@code styles.xml} の {@code cellXf}
+     * に対応する数値書式コード文字列。プレーンテキスト）。
+     *
+     * @see SheetValueTsvExporter#writeFormatTsvFiles
+     */
+    public Book sheetformats() throws IOException {
+        this.status = "sheet.format.tsv";
+        if (tmpdir == null || !tmpdir.isDirectory()) {
+            throw new IOException("展開ディレクトリがありません（先に load を実行してください）");
+        }
+        if (md5 == null || md5.isBlank()) {
+            throw new IOException("MD5 が未定義です（先に load を実行してください）");
+        }
+
+        Path excelRoot = tmpdir.toPath().toAbsolutePath().normalize();
+        Path mdRoot = excelRoot.getParent();
+        if (mdRoot == null) {
+            throw new IOException("作業ディレクトリの親を解決できません");
+        }
+        Path dataDir = mdRoot.resolve("data");
+        SheetValueTsvExporter.writeFormatTsvFiles(excelRoot, dataDir);
+
+        this.endTime = System.currentTimeMillis();
+        return this;
+    }
+
+    /**
+     * {@code tmp.dir/md5/data} に各シートの {@code {sheet_id}.merge.tsv} を書き出す（結合セル。プレーンテキスト。
+     * {@code docs/data-tsv-export.md} の merge 規約）。
+     *
+     * @see SheetValueTsvExporter#writeMergeTsvFiles
+     */
+    public Book sheetmerges() throws IOException {
+        this.status = "sheet.merge.tsv";
+        if (tmpdir == null || !tmpdir.isDirectory()) {
+            throw new IOException("展開ディレクトリがありません（先に load を実行してください）");
+        }
+        if (md5 == null || md5.isBlank()) {
+            throw new IOException("MD5 が未定義です（先に load を実行してください）");
+        }
+
+        Path excelRoot = tmpdir.toPath().toAbsolutePath().normalize();
+        Path mdRoot = excelRoot.getParent();
+        if (mdRoot == null) {
+            throw new IOException("作業ディレクトリの親を解決できません");
+        }
+        Path dataDir = mdRoot.resolve("data");
+        SheetValueTsvExporter.writeMergeTsvFiles(excelRoot, dataDir);
+
+        this.endTime = System.currentTimeMillis();
+        return this;
+    }
+
+    /**
+     * {@code tmp.dir/md5/data} に各シートの {@code {sheet_id}.style.tsv} を書き出す（{@code cellXf} インデックスの参照 ID のみ。
+     * プレーンテキスト）。
+     *
+     * @see SheetValueTsvExporter#writeStyleTsvFiles
+     */
+    public Book sheetstyles() throws IOException {
+        this.status = "sheet.style.tsv";
+        if (tmpdir == null || !tmpdir.isDirectory()) {
+            throw new IOException("展開ディレクトリがありません（先に load を実行してください）");
+        }
+        if (md5 == null || md5.isBlank()) {
+            throw new IOException("MD5 が未定義です（先に load を実行してください）");
+        }
+
+        Path excelRoot = tmpdir.toPath().toAbsolutePath().normalize();
+        Path mdRoot = excelRoot.getParent();
+        if (mdRoot == null) {
+            throw new IOException("作業ディレクトリの親を解決できません");
+        }
+        Path dataDir = mdRoot.resolve("data");
+        SheetValueTsvExporter.writeStyleTsvFiles(excelRoot, dataDir);
+
+        this.endTime = System.currentTimeMillis();
+        return this;
+    }
+
+    /**
+     * {@code tmp.dir/md5/data/styles.json} に {@code xl/styles.xml} の {@code cellXfs} を、{@code .style.tsv} の ID ごとの
+     * {@code restore_xml}（{@code xf} 断片）と {@code numFmtId} / {@code formatCode} として書き出す。
+     *
+     * @see StylesJsonExporter#write
+     */
+    public Book stylesjson() throws IOException {
+        this.status = "styles.json";
+        if (tmpdir == null || !tmpdir.isDirectory()) {
+            throw new IOException("展開ディレクトリがありません（先に load を実行してください）");
+        }
+        if (md5 == null || md5.isBlank()) {
+            throw new IOException("MD5 が未定義です（先に load を実行してください）");
+        }
+
+        Path excelRoot = tmpdir.toPath().toAbsolutePath().normalize();
+        Path mdRoot = excelRoot.getParent();
+        if (mdRoot == null) {
+            throw new IOException("作業ディレクトリの親を解決できません");
+        }
+        Path dataDir = mdRoot.resolve("data");
+        StylesJsonExporter.write(excelRoot, dataDir.resolve("styles.json"));
+
+        this.endTime = System.currentTimeMillis();
+        return this;
+    }
+
+    /**
+     * {@code tmp.dir/md5/data} に各シートの {@code {sheet_id}.formatted_value.tsv} を書き出す（簡易書式を適用した表示用文字列を
+     * UTF-8 を Base64。未対応・失敗時は {@code value} と同じ文字列）。
+     */
+    public Book sheetformattedvalues() throws IOException {
+        this.status = "sheet.formatted_value.tsv";
+        if (tmpdir == null || !tmpdir.isDirectory()) {
+            throw new IOException("展開ディレクトリがありません（先に load を実行してください）");
+        }
+        if (md5 == null || md5.isBlank()) {
+            throw new IOException("MD5 が未定義です（先に load を実行してください）");
+        }
+
+        Path excelRoot = tmpdir.toPath().toAbsolutePath().normalize();
+        Path mdRoot = excelRoot.getParent();
+        if (mdRoot == null) {
+            throw new IOException("作業ディレクトリの親を解決できません");
+        }
+        Path dataDir = mdRoot.resolve("data");
+        SheetValueTsvExporter.writeFormattedValueTsvFiles(excelRoot, dataDir);
+
+        this.endTime = System.currentTimeMillis();
+        return this;
     }
 
     /**

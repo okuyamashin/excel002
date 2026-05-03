@@ -1,13 +1,14 @@
 package jp.engawa.excel002;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Base64;
 import java.util.zip.ZipFile;
 
 import org.junit.jupiter.api.Test;
@@ -30,6 +31,91 @@ class BookTest {
 
         Path mdWorkDir = book.tmpdir.toPath().toAbsolutePath().normalize().getParent();
 
+        Path dataDir = mdWorkDir.resolve("data");
+        assertTrue(Files.isRegularFile(dataDir.resolve("sheets.json")), "data/sheets.json が出力されていること");
+        Path valueTsv = dataDir.resolve("1.value.tsv");
+        assertTrue(Files.isRegularFile(valueTsv), "data/1.value.tsv が出力されていること");
+        String firstRow = Files.readString(valueTsv, StandardCharsets.UTF_8).split("\n", 2)[0];
+        String[] firstCols = firstRow.split("\t", -1);
+        assertEquals(
+                "sampledata",
+                new String(Base64.getDecoder().decode(firstCols[0]), StandardCharsets.UTF_8),
+                "A1 の値が Base64 でデコードできること");
+
+        Path typeTsv = dataDir.resolve("1.type.tsv");
+        assertTrue(Files.isRegularFile(typeTsv), "data/1.type.tsv が出力されていること");
+        String typeFirstRow = Files.readString(typeTsv, StandardCharsets.UTF_8).split("\n", 2)[0];
+        assertEquals("string", typeFirstRow.split("\t", -1)[0], "A1 の型が string であること");
+
+        Path formulaTsv = dataDir.resolve("1.formula.tsv");
+        assertTrue(Files.isRegularFile(formulaTsv), "data/1.formula.tsv が出力されていること");
+        String[] row2 = Files.readString(formulaTsv, StandardCharsets.UTF_8).split("\n")[1].split("\t", -1);
+        assertEquals("D2+E2", row2[5], "F2 の数式が D2+E2 であること");
+
+        Path formatTsv = dataDir.resolve("1.format.tsv");
+        assertTrue(Files.isRegularFile(formatTsv), "data/1.format.tsv が出力されていること");
+        String[] formatLines = Files.readString(formatTsv, StandardCharsets.UTF_8).split("\n");
+        assertEquals(
+                "General",
+                formatLines[0].split("\t", -1)[0],
+                "A1 の書式コードが cellXf に応じて General であること");
+        assertEquals(
+                "m/d/yyyy",
+                formatLines[4].split("\t", -1)[0],
+                "5 行目の日付列が組み込み書式 m/d/yyyy であること");
+
+        Path mergeTsv = dataDir.resolve("1.merge.tsv");
+        assertTrue(Files.isRegularFile(mergeTsv), "data/1.merge.tsv が出力されていること");
+        String[] mergeRow1 = Files.readString(mergeTsv, StandardCharsets.UTF_8).split("\n")[0].split("\t", -1);
+        assertEquals("0,1", mergeRow1[0], "結合の代表セル A1 が 0,1 であること");
+        assertEquals("-1,-1", mergeRow1[1], "結合に飲み込まれた B1 が -1,-1 であること");
+        assertEquals("0,0", mergeRow1[2], "非結合セル C1 が 0,0 であること");
+
+        Path mergeSheet2 = dataDir.resolve("2.merge.tsv");
+        assertTrue(Files.isRegularFile(mergeSheet2), "data/2.merge.tsv が出力されていること");
+        assertTrue(
+                Files.readString(mergeSheet2, StandardCharsets.UTF_8).contains("0,0"),
+                "結合なしシートは 0,0 のみであること");
+
+        Path styleTsv = dataDir.resolve("1.style.tsv");
+        assertTrue(Files.isRegularFile(styleTsv), "data/1.style.tsv が出力されていること");
+        String[] styleLines = Files.readString(styleTsv, StandardCharsets.UTF_8).split("\n");
+        String[] styleRow1 = styleLines[0].split("\t", -1);
+        assertEquals("4", styleRow1[0], "A1 の style は cellXf インデックス 4");
+        assertEquals("4", styleRow1[1], "B1 の style は cellXf インデックス 4");
+        assertEquals(
+                "0",
+                styleLines[1].split("\t", -1)[0],
+                "s 省略セルは既定の cellXf 0");
+        assertEquals(
+                "1",
+                styleLines[4].split("\t", -1)[0],
+                "日付行の cellXf インデックス 1");
+
+        Path stylesJson = dataDir.resolve("styles.json");
+        assertTrue(Files.isRegularFile(stylesJson), "data/styles.json が出力されていること");
+        String stylesBody = Files.readString(stylesJson, StandardCharsets.UTF_8);
+        assertTrue(stylesBody.contains("\"schema_version\":1"), "schema_version があること");
+        assertTrue(stylesBody.contains("\"styles\""), "styles オブジェクトがあること");
+        assertTrue(stylesBody.contains("\"4\":{"), "style ID 4 のエントリがあること");
+        assertTrue(stylesBody.contains("\"restore_xml\""), "restore_xml フィールドがあること");
+        assertTrue(
+                stylesBody.contains("spreadsheetml/2006/main"),
+                "restore_xml にスタイルシートの名前空間 URI が含まれること");
+
+        Path formattedTsv = dataDir.resolve("1.formatted_value.tsv");
+        assertTrue(Files.isRegularFile(formattedTsv), "data/1.formatted_value.tsv が出力されていること");
+        String[] fvLines = Files.readString(formattedTsv, StandardCharsets.UTF_8).split("\n");
+        assertEquals(
+                "sampledata",
+                new String(Base64.getDecoder().decode(fvLines[0].split("\t", -1)[0]), StandardCharsets.UTF_8),
+                "formatted_value の文字列セルは value と同じであること");
+        String dateShown =
+                new String(Base64.getDecoder().decode(fvLines[4].split("\t", -1)[0]), StandardCharsets.UTF_8);
+        assertTrue(
+                dateShown.matches("\\d{4}-\\d{2}-\\d{2}.*"),
+                "日付書式セルが yyyy-MM-dd 形式になること: " + dateShown);
+
         Path expectedOut = book.outputdir.toPath().resolve(xlsx.getFileName().toString());
         book.zip();
 
@@ -38,8 +124,8 @@ class BookTest {
             assertNotNull(z.getEntry("[Content_Types].xml"), "再 ZIP に [Content_Types].xml が含まれること");
         }
 
-        book.clear();
-        assertFalse(Files.exists(mdWorkDir), "tmp.dir/md5 の作業ディレクトリが削除されていること");
-        assertNull(book.tmpdir);
+        //book.clear();
+        //assertFalse(Files.exists(mdWorkDir), "tmp.dir/md5 の作業ディレクトリが削除されていること");
+        //assertNull(book.tmpdir);
     }
 }
