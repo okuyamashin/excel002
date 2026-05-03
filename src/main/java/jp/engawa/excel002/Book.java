@@ -43,6 +43,23 @@ public class Book {
         return book;
     }
 
+    /**
+     * {@code excel002.properties} の {@code tmp.dir}（未設定時はプロジェクト慣例どおり {@code tmp}）を絶対パスに解決し、
+     * そのディレクトリーが存在すれば**配下を含めて再帰的にすべて削除**する（ルートの {@code tmp.dir} ディレクトリ自体も削除する）。
+     *
+     * <p>存在しない場合は何もしない。
+     */
+    public static void clearAllTmpDir() throws IOException {
+        Properties props;
+        try {
+            props = ExternalConfig.load(Book.class);
+        } catch (URISyntaxException e) {
+            throw new IOException("設定の解決に失敗しました", e);
+        }
+        Path baseTmp = Path.of(props.getProperty("tmp.dir", "tmp")).toAbsolutePath().normalize();
+        deleteRecursively(baseTmp);
+    }
+
     protected File excelfile;
     protected File tmpdir;
     protected File logdir;
@@ -356,6 +373,31 @@ public class Book {
         Path dataDir = mdRoot.resolve("data");
         SheetValueTsvExporter.writeFormattedValueTsvFiles(excelRoot, dataDir);
 
+        this.endTime = System.currentTimeMillis();
+        return this;
+    }
+
+    /**
+     * {@code tmp.dir/md5/data} の TSV と {@code sheets.json} から、指定 {@code sheet_id} のワークシート XML を
+     * 展開先 {@code excel} ルート上に再書き込みする（{@code load} 後に呼ぶ）。
+     *
+     * @see WorksheetTsvRebuilder#rebuildWorksheet
+     */
+    public Book rebuildworksheetfromtsv(String sheetId) throws IOException {
+        this.status = "rebuild.worksheet.tsv";
+        if (tmpdir == null || !tmpdir.isDirectory()) {
+            throw new IOException("展開ディレクトリがありません（先に load を実行してください）");
+        }
+        if (md5 == null || md5.isBlank()) {
+            throw new IOException("MD5 が未定義です（先に load を実行してください）");
+        }
+        Path excelRoot = tmpdir.toPath().toAbsolutePath().normalize();
+        Path mdRoot = excelRoot.getParent();
+        if (mdRoot == null) {
+            throw new IOException("作業ディレクトリの親を解決できません");
+        }
+        Path dataDir = mdRoot.resolve("data");
+        WorksheetTsvRebuilder.rebuildWorksheet(excelRoot, dataDir, sheetId);
         this.endTime = System.currentTimeMillis();
         return this;
     }

@@ -5,9 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.net.URL;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+
 import java.util.Base64;
 import java.util.List;
 import java.util.zip.ZipFile;
@@ -16,9 +18,17 @@ import org.junit.jupiter.api.Test;
 
 class BookTest {
 
+    private static void assertSameUtf8File(Path expected, Path actual, String relative) throws IOException {
+        String e = Files.readString(expected.resolve(relative), StandardCharsets.UTF_8);
+        String a = Files.readString(actual.resolve(relative), StandardCharsets.UTF_8);
+        assertEquals(e, a, relative + " が再 zip → 再展開 → 再出力後も一致すること");
+    }
+
     /** {@code load} → {@code zip} → {@code clear} で出力と tmp 作業領域の削除まで確認する。 */
     @Test
     void unzipBook() throws Exception {
+        Book.clearAllTmpDir();
+        
         URL url = BookTest.class.getResource("/input/sampledata.xlsx");
         assertNotNull(url, "classpath: input/sampledata.xlsx（テストリソース）が必要です");
 
@@ -144,6 +154,25 @@ class BookTest {
                 dateShown.matches("\\d{4}-\\d{2}-\\d{2}.*"),
                 "日付書式セルが yyyy-MM-dd 形式になること: " + dateShown);
 
+        Path sheetXml = book.tmpdir.toPath().resolve("xl/worksheets/sheet1.xml");
+        String xmlBefore = Files.readString(sheetXml, StandardCharsets.UTF_8);
+        assertTrue(xmlBefore.contains("D2+E2"), "元の sheet1 に数式があること");
+
+        WorksheetTsvRebuilder.rebuildWorksheet(book.tmpdir.toPath(), dataDir, "1");
+        String xmlAfter = Files.readString(sheetXml, StandardCharsets.UTF_8);
+        assertTrue(
+                xmlAfter.contains("ref=\"A1:F7\""),
+                "再構築後 dimension が A1:F7 であること: " + xmlAfter);
+        assertTrue(xmlAfter.contains("D2+E2"), "再構築後も F2 の数式が残ること");
+        assertTrue(xmlAfter.contains("D4+E4"), "再構築後も F4 の数式が残ること");
+        assertTrue(
+                xmlAfter.contains("ref=\"A1:B1\""),
+                "再構築後 mergeCell が A1:B1 であること");
+        book.rebuildworksheetfromtsv("2");
+        Path sheet2 = book.tmpdir.toPath().resolve("xl/worksheets/sheet2.xml");
+        String xml2 = Files.readString(sheet2, StandardCharsets.UTF_8);
+        assertTrue(xml2.contains("sheetData"), "Sheet2 の再構築で sheetData があること");
+
         Path expectedOut = book.outputdir.toPath().resolve(xlsx.getFileName().toString());
         book.zip();
 
@@ -155,5 +184,42 @@ class BookTest {
         //book.clear();
         //assertFalse(Files.exists(mdWorkDir), "tmp.dir/md5 の作業ディレクトリが削除されていること");
         //assertNull(book.tmpdir);
+    }
+
+    /**
+     * 展開 → TSV から全シートの worksheet 再構築 → zip → 再 load したとき、セル由来の TSV が元と一致すること（実質の同一データ確認）。
+     */
+    @Test
+    void loadRebuildWorksheetsZip_roundTripPreservesCellTsvExport() throws Exception {
+        URL url = BookTest.class.getResource("/input/sampledata.xlsx");
+        assertNotNull(url, "classpath: input/sampledata.xlsx が必要です");
+
+        Path xlsx = Path.of(url.toURI());
+        Book book = Book.load(xlsx.toFile());
+        Path mdWorkDir = book.tmpdir.toPath().toAbsolutePath().normalize().getParent();
+        Path dataDirOrig = mdWorkDir.resolve("data");
+
+        book.rebuildworksheetfromtsv("1");
+        book.rebuildworksheetfromtsv("2");
+
+        Path roundtripXlsx = mdWorkDir.resolve("roundtrip-cell-check.xlsx");
+        Files.deleteIfExists(roundtripXlsx);
+        book.zip(roundtripXlsx.toFile());
+
+        Book book2 = Book.load(roundtripXlsx.toFile());
+        Path dataDirRound = book2.tmpdir.toPath().toAbsolutePath().normalize().getParent().resolve("data");
+
+        for (String sid : List.of("1", "2")) {
+            for (String aspect :
+                    List.of("value.tsv", "type.tsv", "string.tsv", "formula.tsv", "merge.tsv", "style.tsv", "format.tsv")) {
+                assertSameUtf8File(dataDirOrig, dataDirRound, sid + "." + aspect);
+            }
+        }
+        assertSameUtf8File(dataDirOrig, dataDirRound, "strings.ndjson");
+        assertSameUtf8File(dataDirOrig, dataDirRound, "styles.ndjson");
+        assertSameUtf8File(dataDirOrig, dataDirRound, "1.formatted_value.tsv");
+        assertSameUtf8File(dataDirOrig, dataDirRound, "2.formatted_value.tsv");
+
+        Files.deleteIfExists(roundtripXlsx);
     }
 }
