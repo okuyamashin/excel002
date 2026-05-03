@@ -403,6 +403,35 @@ public class Book {
     }
 
     /**
+     * {@code tmp.dir/md5/data} の指定シートのグリッド TSV（{@code value} / {@code type} / {@code string} / {@code formula} /
+     * {@code format} / {@code merge} / {@code style} / {@code formatted_value}）から、ワークシート上の<strong>複数の行を同時削除</strong>する。
+     *
+     * <p>削除行はすべて <strong>1 始まり</strong>。一時ファイルに書き換え結果を並べてからすべてのファイルで行・列サイズが揃っていることを確認したあとだけ、原本を削除してリネームする。
+     * 処理が失敗した場合は作成した一時ファイルだけ削除し、元のデータは残る。
+     *
+     * @param sheetId {@code sheets.json} の {@code sheet_id}
+     * @param rowsOneBased 削除対象となる行番号（1 始まり。重複可）
+     */
+    public Book datasheetdelrows(String sheetId, int... rowsOneBased) throws IOException {
+        this.status = "data.sheet.tsv.del.rows";
+        if (tmpdir == null || !tmpdir.isDirectory()) {
+            throw new IOException("展開ディレクトリがありません（先に load を実行してください）");
+        }
+        if (md5 == null || md5.isBlank()) {
+            throw new IOException("MD5 が未定義です（先に load を実行してください）");
+        }
+
+        Path excelRoot = tmpdir.toPath().toAbsolutePath().normalize();
+        Path mdRoot = excelRoot.getParent();
+        if (mdRoot == null) {
+            throw new IOException("作業ディレクトリの親を解決できません");
+        }
+        SheetTsvRowDeletion.deleteRows(mdRoot.resolve("data"), sheetId, rowsOneBased);
+        this.endTime = System.currentTimeMillis();
+        return this;
+    }
+
+    /**
      * {@link #outputdir} に、元ファイルと同名の xlsx を書き出す（{@code load} 後に呼ぶ）。
      */
     public Book zip() throws IOException {

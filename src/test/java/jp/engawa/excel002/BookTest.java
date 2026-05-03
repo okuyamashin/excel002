@@ -102,7 +102,7 @@ class BookTest {
         assertTrue(Files.isRegularFile(mergeTsv), "data/1.merge.tsv が出力されていること");
         String[] mergeRow1 = Files.readString(mergeTsv, StandardCharsets.UTF_8).split("\n")[0].split("\t", -1);
         assertEquals("0,1", mergeRow1[0], "結合の代表セル A1 が 0,1 であること");
-        assertEquals("-1,-1", mergeRow1[1], "結合に飲み込まれた B1 が -1,-1 であること");
+        assertEquals("(1,1)", mergeRow1[1], "結合に飲み込まれた B1 が結合元 A1 を (列,行) で参照すること");
         assertEquals("0,0", mergeRow1[2], "非結合セル C1 が 0,0 であること");
 
         Path mergeSheet2 = dataDir.resolve("2.merge.tsv");

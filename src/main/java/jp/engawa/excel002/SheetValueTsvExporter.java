@@ -190,7 +190,7 @@ final class SheetValueTsvExporter {
 
     /**
      * {@code dataDir} に各シートの {@code {sheet_id}.merge.tsv} を出力する（結合セル。プレーンテキスト。
-     * 通常セル {@code 0,0}、結合の左上（代表）{@code 0,1}、結合に飲み込まれたセル {@code -1,-1}）。
+     * 通常セル {@code 0,0}、結合の左上（代表）{@code 0,1}、結合に飲み込まれたセルは結合元の 1 始まり列・行を {@code (col,row)} で参照）。
      */
     static void writeMergeTsvFiles(Path excelRoot, Path dataDir) throws IOException {
         Path xl = excelRoot.resolve("xl");
@@ -529,12 +529,15 @@ final class SheetValueTsvExporter {
             if (rStart > rEnd || cStart > cEnd) {
                 continue;
             }
+            int anchorColOne = m.col1();
+            int anchorRowOne = m.row1();
+            String followerRef = "(" + anchorColOne + "," + anchorRowOne + ")";
             for (int r = rStart; r <= rEnd; r++) {
                 for (int c = cStart; c <= cEnd; c++) {
                     if (r == r0Top && c == c0Left) {
                         g[r][c] = "0,1";
                     } else {
-                        g[r][c] = "-1,-1";
+                        g[r][c] = followerRef;
                     }
                 }
             }

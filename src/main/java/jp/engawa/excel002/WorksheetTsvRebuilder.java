@@ -121,6 +121,37 @@ public final class WorksheetTsvRebuilder {
 
     private record MergeRegion(int row1OneBased, int col1OneBased, int row2OneBased, int col2OneBased) {}
 
+    private static final Pattern MERGE_ORIGIN_REF =
+            Pattern.compile("^\\(\\s*(\\d+)\\s*,\\s*(\\d+)\\s*\\)$");
+
+    /** {@code "(col,row)"} を 1 始まりで解釈。不正な場合は {@code null}。 */
+    private static int[] parseMergeOriginParenRef(String trimmedField) {
+        if (trimmedField == null) {
+            return null;
+        }
+        Matcher m = MERGE_ORIGIN_REF.matcher(trimmedField);
+        if (!m.matches()) {
+            return null;
+        }
+        int colOne = Integer.parseInt(m.group(1));
+        int rowOne = Integer.parseInt(m.group(2));
+        return new int[] {colOne, rowOne};
+    }
+
+    /**
+     * 結合の「飲み込まれた側」（{@code merge.tsv}）：旧 {@code -1,-1} または他セルを指す {@code (col,row)}。
+     */
+    private static boolean isMergedFollowerPlaceholder(String trimmedMergeField, int colOneBased, int rowOneBased) {
+        if ("-1,-1".equals(trimmedMergeField)) {
+            return true;
+        }
+        int[] ref = parseMergeOriginParenRef(trimmedMergeField);
+        if (ref == null) {
+            return false;
+        }
+        return ref[0] != colOneBased || ref[1] != rowOneBased;
+    }
+
     private static List<MergeRegion> findMergeRegions(String[][] merge) {
         if (merge.length == 0 || merge[0].length == 0) {
             return List.of();
@@ -138,10 +169,14 @@ public final class WorksheetTsvRebuilder {
                 if (m == null || m.isEmpty() || !"0,1".equals(m.trim())) {
                     continue;
                 }
+                int anchorColOne = c + 1;
+                int anchorRowOne = r + 1;
+                String followerForAnchor = "(" + anchorColOne + "," + anchorRowOne + ")";
                 int width = 1;
                 while (c + width < cols) {
                     String right = merge[r][c + width];
-                    if (right != null && "-1,-1".equals(right.trim())) {
+                    String rt = right != null ? right.trim() : "";
+                    if ("-1,-1".equals(rt) || followerForAnchor.equals(rt)) {
                         width++;
                     } else {
                         break;
@@ -152,7 +187,8 @@ public final class WorksheetTsvRebuilder {
                 while (r + height < rows) {
                     for (int dc = 0; dc < width; dc++) {
                         String below = merge[r + height][c + dc];
-                        if (below == null || !"-1,-1".equals(below.trim())) {
+                        String bt = below != null ? below.trim() : "";
+                        if (!"-1,-1".equals(bt) && !followerForAnchor.equals(bt)) {
                             break outer;
                         }
                     }
@@ -291,7 +327,7 @@ public final class WorksheetTsvRebuilder {
             if ("0,1".equals(mt)) {
                 return true;
             }
-            if ("-1,-1".equals(mt)) {
+            if (isMergedFollowerPlaceholder(mt, c + 1, r + 1)) {
                 int si = styleIndex(style[r][c]);
                 return si > 0;
             }
@@ -356,7 +392,7 @@ public final class WorksheetTsvRebuilder {
         boolean hasSharedString = !sid.isEmpty();
         String tlab = typeLabel != null ? typeLabel.trim() : "";
 
-        if ("-1,-1".equals(mg)) {
+        if (isMergedFollowerPlaceholder(mg, colOneBased, rowOneBased)) {
             w.writeStartElement(NS_MAIN, "c");
             w.writeAttribute("r", ref);
             if (si > 0) {
